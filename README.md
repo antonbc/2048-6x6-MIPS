@@ -13,7 +13,7 @@ https://courses.missouristate.edu/KenVollmar/MARS/MARS_4_5_Aug2014/Mars4_5.jar
 
 ## Features
 
-- **Customizable Game Start**: Players can start with a new game or provide a custom 3x3 board configuration.
+- **Customizable Game Start**: Players can start with a new game or provide a custom 6x6 board configuration.
 - **Tile Movements**: Players can use `W`, `A`, `S`, `D` keys to swipe tiles in different directions. The game merges identical tiles and shifts them appropriately, displaying the board after each move.
 - **Random Tile Addition**: A new tile (with a value of 2) is added to an empty cell after each move. Players can disable or enable this feature during gameplay by entering specific commands.
 - **Win and Loss Conditions**: If a tile with 2048 appears, the player wins. If no moves are possible on a fully occupied board, the player loses.
