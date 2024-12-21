@@ -741,7 +741,7 @@ up_store_back:
     sw   $t7, 96($t2)
     sw   $t8, 120($t2)         # bottom most value
 
-    addi $t0, $t0, 1
+    addi $t0, $t0, -1
     bne  $t0, 6, swipe_up_column # Process next row if not done
 
     jal compare_grids
@@ -931,13 +931,10 @@ end_down_merge:
 
 
 #==================== Win/Lose CHECKER ==============================
-
 check_game_status:
-    # Initialize variables
     li   $t0, 0                # Start index (0)
-    li   $t1, 36                # Total number of cells (6x6 grid)
+    li   $t1, 36               # Total number of cells (6x6 grid)
 
-# checking 2048 working dont edit
 check_2048_loop:
     # Exit loop if all cells are checked
     beq  $t0, $t1, game_over_check_done
@@ -947,93 +944,87 @@ check_2048_loop:
     add  $t3, $s4, $t3         # Address = grid base + offset
     lw   $t4, 0($t3)           # Load grid[t0] value into $t4
 
-    # If the current cell is 0, there is still space to play
-    beq  $t4, $zero, game_continues
+    # Check for win or empty cell
     beq  $t4, 2048, win_game
-    add $t0, $t0, 1
+    beq  $t4, $zero, next_cell  # Jump to next cell if empty
+
+next_cell:
+    # Increment index and check next cell
+    addi $t0, $t0, 1
     j check_2048_loop
 
 game_over_check_done:
     li   $t0, 0                # Start index (0)
-    li   $t1, 36                # Total number of cells (6x6 grid)
-    
-check_top_neighbor:
-    li $t5, 0
-    sub $t5, $t0, 6           # $t5 = cell - n
-    bge  $t5, 6, has_top_neighbor  # If cell >= n (i.e., valid top neighbor)
-    j check_bottom_neighbor      # Skip if no valid top neighbor
+
+check_neighbors_loop:
+    # Exit loop if all cells are checked
+    beq  $t0, $t1, check_game_over_done
+
+    # Load current cell value
+    mul  $t3, $t0, 4           # Offset = index * 4
+    add  $t3, $s4, $t3         # Address = grid base + offset
+    lw   $t4, 0($t3)           # Load current cell value into $t4
+
+    # Check top neighbor
+    sub  $t5, $t0, 6           # Top neighbor index = cell - 6
+    bgez $t5, has_top_neighbor # Valid if index >= 0
+    j check_bottom_neighbor    # Skip if no valid top neighbor
 
 has_top_neighbor:
-    # Load the top neighbor value
     mul  $t6, $t5, 4           # Offset = top index * 4
     add  $t6, $s4, $t6         # Address = grid base + offset
-    lw   $t7, 0($t6)           # Load top neighbor value into $t7
-
-    # Check if the top neighbor has the same value
-    beq  $t4, $t7, game_continues   # If current cell value == top neighbor, game can continue
-    beq  $t7, $zero, game_continues   # if top is zero continue game
+    lw   $t7, 0($t6)           # Load top neighbor value
+    beq  $t4, $t7, game_continues  # If same value, game can continue
+    beq  $t7, $zero, game_continues # If top is zero, game can continue
 
 check_bottom_neighbor:
-    li $t5, 0
-    add  $t5, $t0, 6           # $t5 = cell + n
-    blt  $t5, 30, has_bottom_neighbor  # If cell < n(n-1) or 6
+    add  $t5, $t0, 6           # Bottom neighbor index = cell + 6
+    blt  $t5, 36, has_bottom_neighbor # Valid if index < 36
     j check_left_neighbor       # Skip if no valid bottom neighbor
 
 has_bottom_neighbor:
-    # Load the bottom neighbor value
     mul  $t6, $t5, 4           # Offset = bottom index * 4
     add  $t6, $s4, $t6         # Address = grid base + offset
-    lw   $t7, 0($t6)           # Load bottom neighbor value into $t7
-
-    # Check if the bottom neighbor has the same value
-    beq  $t4, $t7, game_continues   # If current cell value == bottom neighbor, game can continue
-    beq  $t7, $zero, game_continues   # if top is zero continue game
+    lw   $t7, 0($t6)           # Load bottom neighbor value
+    beq  $t4, $t7, game_continues  # If same value, game can continue
+    beq  $t7, $zero, game_continues # If bottom is zero, game can continue
 
 check_left_neighbor:
-    li $t5, 0
-    sub $t5, $t0, 1           # $t5 = cell - 1
-    div  $t0, $t1               # cell % n
-    mfhi $t6                    # $t6 = cell % n
-    bnez $t6, has_left_neighbor  # If cell % 3 != 0, valid left neighbor
+    sub  $t5, $t0, 1           # Left neighbor index = cell - 1
+    rem  $t6, $t0, 6           # Current cell column = index % 6
+    bnez $t6, has_left_neighbor # Valid if not in first column
     j check_right_neighbor      # Skip if no valid left neighbor
 
 has_left_neighbor:
-    # Load the left neighbor value
     mul  $t6, $t5, 4           # Offset = left index * 4
     add  $t6, $s4, $t6         # Address = grid base + offset
-    lw   $t7, 0($t6)           # Load left neighbor value into $t7
-
-    # Check if the left neighbor has the same value
-    beq  $t4, $t7, game_continues   # If current cell value == left neighbor, game can continue
-    beq  $t7, $zero, game_continues   # if top is zero continue game
+    lw   $t7, 0($t6)           # Load left neighbor value
+    beq  $t4, $t7, game_continues  # If same value, game can continue
+    beq  $t7, $zero, game_continues # If left is zero, game can continue
 
 check_right_neighbor:
-    li $t5, 0
-    add  $t5, $t0, 1           # $t5 = cell + 1
-    div  $t5, $t1               # (cell + 1) % n
-    mfhi $t6                    # $t6 = (cell + 1) % 3
-    bnez $t6, has_right_neighbor  # If (cell + 1) % 3 != 0, valid right neighbor
-    j check_game_over_loop      # Skip if no valid right neighbor
+    add  $t5, $t0, 1           # Right neighbor index = cell + 1
+    addi $t6, $t0, 1           # Current cell + 1
+    rem  $t6, $t6, 6           # Column of (cell + 1)
+    bnez $t6, has_right_neighbor # Valid if not in last column
+    j check_neighbors_loop      # Skip if no valid right neighbor
 
 has_right_neighbor:
-    # Load the right neighbor value
     mul  $t6, $t5, 4           # Offset = right index * 4
     add  $t6, $s4, $t6         # Address = grid base + offset
-    lw   $t7, 0($t6)           # Load right neighbor value into $t7
+    lw   $t7, 0($t6)           # Load right neighbor value
+    beq  $t4, $t7, game_continues  # If same value, game can continue
+    beq  $t7, $zero, game_continues # If right is zero, game can continue
 
-    # Check if the right neighbor has the same value
-    beq  $t4, $t7, game_continues   # If current cell value == right neighbor, game can continue
-    beq  $t7, $zero, game_continues   # if top is zero continue game
-    
-check_game_over_loop:
-    # Increment index to check the next cell
-    addi $t0, $t0, 1           # Increment index
-    beq  $t0, 36, check_game_over_done # If index >= 36, end game check
-    j check_game_over_loop      # Otherwise, check next cell
+    # Increment index and check next cell
+    addi $t0, $t0, 1
+    j check_neighbors_loop
 
 check_game_over_done:
     print_string(lose_msg)
     exit
+
+
 
 
 
