@@ -75,33 +75,6 @@
 .end_macro
 
 
-.macro cell_num(%dst_reg, %row_num, %col_num)
-    	subi %dst_reg, %row_num, 1      		# dst = row num value - 1
-    	mult %dst_reg, $t0           			# dst = (row num - 1) * n
-    	mflo %dst_reg            			# Saves the lower-order bits of the product of $destination = row number - 1 and $t0 = n into $destination 
-    	addu %dst_reg, %dst_reg, %col_num 		# $destination = ((row number - 1) * n + column number)
-.end_macro
-		
-.macro pick(%cell_num)
-	li   $t6, 4			# Loads 4, equal to how many bytes a word has in MIPS, into $t6 to start initializing the offset added to the value of matrix
-	mult $t6, %cell_num		# $t6 = 4 * number of the cell to write to
-	mflo $t6			# Saves the lower-order bits of product of $t6 = 4 and %cell_number = number of the cell to write to into $t6
-	la   $t7, matrix		# Loads the address where matrix is stored in the data segment into $t7
-	lw   $t7, 0($t7)		# Loads the *value* of matrix into $t7
-	addu $t7, $t7, $t6		# Adds the offset to the value of matrix to get the address of the cell to write to
-    	lw   $t8, 0($t7)		
-.end_macro
-
-.macro place(%cell_num, %val)
-	li	$t6, 4			# Loads 4, equal to how many bytes a word has in MIPS, into $t6 to start initializing the offset added to the value of matrix
-	mult	$t6, %cell_num	# $t6 = 4 * number of the cell to write to
-	mflo	$t6			# Saves the lower-order bits of product of $t6 = 4 and %cell_number = number of the cell to write to into $t6
-	la 	$t7, matrix		# Loads the address where matrix is stored in the data segment into $t7
-	lw 	$t7, 0($t7)		# Loads the *value* of matrix into $t7
-	addu	$t7, $t7, $t6		# Adds the offset to the value of matrix to get the address of the cell to write to
-	sw	%val, 0($t7)		# Stores %value to the cell to write to
-.end_macro
-
 .data
 menu_msg:              .asciiz "Choose [1] or [2]: \n[1] New Game \n[2] Start from a State \n"
 start_from_state_msg:  .asciiz "Enter a board configuration:\n"
@@ -463,227 +436,304 @@ enable_random_generator:
 swipe_right:
     la   $a0, n                # Load address of n
     lw   $t0, 0($a0)           # Load grid size into $t0
-    move $s3, $t0              # Store n in $s3 for later use
-    li   $t0, 0
+    move $s7, $t0              # Store n in $s7 for later use
+    li   $t0, 0                # Row counter initialized to 0
 
 swipe_right_row:
-    mul  $t9, $s3, 4
-    mul  $t1, $t0, $t9
-    add  $t2, $s4, $t1
+    # Calculate base address of the current row
+    mul  $t9, $s7, 4           # Bytes per row = n * 4
+    mul  $t1, $t0, $t9         # Row index * Bytes per row
+    add  $t2, $s4, $t1         # Base address of the current row
 
-    lw   $t3, 0($t2) # leftmost value
+    # Load the row into registers
+    lw   $t3, 0($t2)           # Leftmost value
     lw   $t4, 4($t2)
     lw   $t5, 8($t2)
     lw   $t6, 12($t2)
     lw   $t7, 16($t2)
-    lw   $t8, 20($t2) # rightmost value
+    lw   $t8, 20($t2)          # Rightmost value
 
-shift_right_row:
-    beq 
+    # Shift and Merge
+    jal  shift_right_row       # Shift non-zeroes to the right
+    jal  shift_right_row       # Shift non-zeroes to the right
+    jal  shift_right_row       # Shift non-zeroes to the right
+    jal  shift_right_row       # Shift non-zeroes to the right
+    jal  shift_right_row       # Shift non-zeroes to the right
+    jal  shift_right_row       # Shift non-zeroes to the right
+    jal  shift_right_row       # Shift non-zeroes to the right
 
+    jal  merge_right_row       # Merge adjacent values
+
+    jal  shift_right_row       # Shift again after merging
+    jal  shift_right_row       # Shift again after merging
+    jal  shift_right_row       # Shift again after merging
+    jal  shift_right_row       # Shift again after merging
+    jal  shift_right_row       # Shift again after merging
+    jal  shift_right_row       # Shift again after merging
+    jal  shift_right_row       # Shift again after merging
+
+right_store_back:
+    # Store updated row back to memory
+    sw   $t3, 0($t2)
+    sw   $t4, 4($t2)
+    sw   $t5, 8($t2)
+    sw   $t6, 12($t2)
+    sw   $t7, 16($t2)
+    sw   $t8, 20($t2)
+
+    # Increment row counter and check end condition
     addi $t0, $t0, 1
-    move $t6, $s3
-    bne  $t0, $t6, swipe_right_row
+    bne  $t0, 6, swipe_right_row # Process next row if not done
 
-
+    # Finalize
     jal  compare_grids
-    jal moves_counter
+    jal  moves_counter
     beq  $s5, 4, random_tile_generator
     jal  print_grid
 
     j play_game
 
 
+shift_right_row:
+    # Begin shifting from right to left
+    # Shift 5th to 6th
+    bne $t8, $zero, right_shift_4th_to_5th  # If $t8 is not zero, skip
+    move $t8, $t7                     # Move $t7 to $t8
+    li   $t7, 0                       # Set $t7 to zero
+
+right_shift_4th_to_5th:
+    bne $t7, $zero, right_shift_3rd_to_4th  # If $t7 is not zero, skip
+    move $t7, $t6                     # Move $t6 to $t7
+    li   $t6, 0                       # Set $t6 to zero
+
+right_shift_3rd_to_4th:
+    bne $t6, $zero, right_shift_2nd_to_3rd  # If $t6 is not zero, skip
+    move $t6, $t5                     # Move $t5 to $t6
+    li   $t5, 0                       # Set $t5 to zero
+
+right_shift_2nd_to_3rd:
+    bne $t5, $zero, right_shift_1st_to_2nd  # If $t5 is not zero, skip
+    move $t5, $t4                     # Move $t4 to $t5
+    li   $t4, 0                       # Set $t4 to zero
+
+right_shift_1st_to_2nd:
+    bne $t4, $zero, end_right_shift         # If $t4 is not zero, skip
+    move $t4, $t3                     # Move $t3 to $t4
+    li   $t3, 0                       # Set $t3 to zero
+
+end_right_shift:
+    jr $ra                 # End of shifting
+
+merge_right_row:
+    # Merge 5th and 6th
+    bne $t8, $t7, right_merge_4th_and_5th  # If $t8 != $t7, skip
+    add $t8, $t8, $t7                # Add $t7 to $t8
+    li  $t7, 0                       # Set $t7 to zero
+
+right_merge_4th_and_5th:
+    bne $t7, $t6, right_merge_3rd_and_4th  # If $t7 != $t6, skip
+    add $t7, $t7, $t6                # Add $t6 to $t7
+    li  $t6, 0                       # Set $t6 to zero
+
+right_merge_3rd_and_4th:
+    bne $t6, $t5, right_merge_2nd_and_3rd  # If $t6 != $t5, skip
+    add $t6, $t6, $t5                # Add $t5 to $t6
+    li  $t5, 0                       # Set $t5 to zero
+
+right_merge_2nd_and_3rd:
+    bne $t5, $t4, right_merge_1st_and_2nd  # If $t5 != $t4, skip
+    add $t5, $t5, $t4                # Add $t4 to $t5
+    li  $t4, 0                       # Set $t4 to zero
+
+right_merge_1st_and_2nd:
+    bne $t4, $t3, end_right_merge          # If $t4 != $t3, skip
+    add $t4, $t4, $t3                # Add $t3 to $t4
+    li  $t3, 0                       # Set $t3 to zero
+
+end_right_merge:
+    jr $ra
+
+
+
+
+
 # =============== SWIPE LEFT
 swipe_left:
-    li   $t0, 0
+    la   $a0, n                # Load address of n
+    lw   $t0, 0($a0)           # Load grid size into $t0
+    move $s7, $t0              # Store n in $s7 for later use
+    li   $t0, 0                # Row counter initialized to 0
+
 
 swipe_left_row:
-    mul  $t9, $s3, 4
-    mul  $t1, $t0, $t9
-    add  $t2, $s4, $t1
+    # Calculate base address of the current row
+    mul  $t9, $s7, 4           # Bytes per row = n * 4
+    mul  $t1, $t0, $t9         # Row index * Bytes per row
+    add  $t2, $s4, $t1         # Base address of the current row
 
-    lw   $t3, 0($t2)
+    # Load the row into registers
+    lw   $t3, 0($t2)           # Leftmost value
     lw   $t4, 4($t2)
     lw   $t5, 8($t2)
+    lw   $t6, 12($t2)
+    lw   $t7, 16($t2)
+    lw   $t8, 20($t2)          # Rightmost value
 
-    beq  $t4, $zero, check_leftmost
-    j    shift_and_merge_left
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
 
-check_leftmost:
-    beq  $t3, $zero, move_rightmost_to_leftmost
-    j    shift_and_merge_left
+    jal merge_left_row
 
-move_rightmost_to_leftmost:
-    move $t3, $t5
-    li   $t5, 0
-    li   $t4, 0
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
+    jal shift_left_row
 
-shift_and_merge_left:
-    li   $a0, 0
-    li   $a1, 0
-    li   $a2, 0
 
-    bne  $t3, $zero, store_t3_left
-    j    check_t4_left
+left_store_back:
+    # Store updated row back to memory
+    sw   $t3, 0($t2)
+    sw   $t4, 4($t2)
+    sw   $t5, 8($t2)
+    sw   $t6, 12($t2)
+    sw   $t7, 16($t2)
+    sw   $t8, 20($t2)
 
-store_t3_left:
-    move $a0, $t3
-    j    check_t4_left
-
-check_t4_left:
-    bne  $t4, $zero, store_t4_left
-    j    check_t5_left
-
-store_t4_left:
-    beq  $a0, $zero, store_t4_in_a0
-    move $a1, $t4
-    j    check_t5_left
-
-store_t4_in_a0:
-    move $a0, $t4
-    j    check_t5_left
-
-check_t5_left:
-    bne  $t5, $zero, store_t5_left
-    j    merge_values_left
-
-store_t5_left:
-    beq  $a1, $zero, store_t5_in_a1
-    move $a2, $t5
-    j    merge_values_left
-
-store_t5_in_a1:
-    move $a1, $t5
-    j    merge_values_left
-
-merge_values_left:
-    beq  $a0, $a1, merge_a0_a1_left
-    j    check_a1_a2_left
-
-merge_a0_a1_left:
-    add  $a0, $a0, $a1
-    li   $a1, 0
-    bne  $a2, $zero, shift_a2_to_a1_left
-    j    check_a1_a2_left
-
-shift_a2_to_a1_left:
-    move $a1, $a2
-    li   $a2, 0
-    j    check_a1_a2_left
-
-check_a1_a2_left:
-    beq  $a1, $a2, merge_a1_a2_left
-    j    store_back_left
-
-merge_a1_a2_left:
-    add  $a1, $a1, $a2
-    li   $a2, 0
-
-store_back_left:
-    sw   $a0, 0($t2)
-    sw   $a1, 4($t2)
-    sw   $a2, 8($t2)
-
+    # Increment row counter and check end condition
     addi $t0, $t0, 1
-    move $t6, $s3
-    bne  $t0, $t6, swipe_left_row
+    bne  $t0, 6, swipe_left_row # Process next row if not done
 
-    jal compare_grids
-    jal moves_counter
-    beq $s5, 4, random_tile_generator
+    # Finalize
+    jal  compare_grids
+    jal  moves_counter
+    beq  $s5, 4, random_tile_generator
     jal  print_grid
 
     j play_game
+
+shift_left_row:
+    # Begin shifting from left to right
+    # Shift 1st to 2nd
+    bne $t3, $zero, left_shift_2nd_to_3rd  # If $t3 is not zero, skip
+    move $t3, $t4                     # Move $t4 to $t3
+    li   $t4, 0                       # Set $t4 to zero
+
+left_shift_2nd_to_3rd:
+    bne $t3, $zero, left_shift_3rd_to_4th  # If $t3 is not zero, skip
+    move $t3, $t5                     # Move $t5 to $t3
+    li   $t5, 0                       # Set $t5 to zero
+
+left_shift_3rd_to_4th:
+    bne $t3, $zero, left_shift_4th_to_5th  # If $t3 is not zero, skip
+    move $t3, $t6                     # Move $t6 to $t3
+    li   $t6, 0                       # Set $t6 to zero
+
+left_shift_4th_to_5th:
+    bne $t3, $zero, left_shift_5th_to_6th  # If $t3 is not zero, skip
+    move $t3, $t7                     # Move $t7 to $t3
+    li   $t7, 0                       # Set $t7 to zero
+
+left_shift_5th_to_6th:
+    bne $t3, $zero, end_left_shift      # If $t3 is not zero, skip
+    move $t3, $t8                     # Move $t8 to $t3
+    li   $t8, 0                       # Set $t8 to zero
+
+end_left_shift:
+    jr $ra          # Return when done
+
+merge_left_row:
+    # Merge 1st and 2nd
+    bne $t3, $t4, left_merge_2nd_and_3rd  # If $t3 != $t4, skip
+    add $t3, $t3, $t4                # Add $t4 to $t3
+    li  $t4, 0                       # Set $t4 to zero
+
+left_merge_2nd_and_3rd:
+    bne $t4, $t5, left_merge_3rd_and_4th  # If $t4 != $t5, skip
+    add $t4, $t4, $t5                # Add $t5 to $t4
+    li  $t5, 0                       # Set $t5 to zero
+
+left_merge_3rd_and_4th:
+    bne $t5, $t6, left_merge_4th_and_5th  # If $t5 != $t6, skip
+    add $t5, $t5, $t6                # Add $t6 to $t5
+    li  $t6, 0                       # Set $t6 to zero
+
+left_merge_4th_and_5th:
+    bne $t6, $t7, left_merge_5th_and_6th  # If $t6 != $t7, skip
+    add $t6, $t6, $t7                # Add $t7 to $t6
+    li  $t7, 0                       # Set $t7 to zero
+
+left_merge_5th_and_6th:
+    bne $t7, $t8, end_left_merge      # If $t7 != $t8, skip
+    add $t7, $t7, $t8                # Add $t8 to $t7
+    li  $t8, 0                       # Set $t8 to zero
+
+end_left_merge:
+    jr $ra          # Return when done
+
 
 
 
 
 #=========== SWIPE UP
 swipe_up:
-    li   $t0, 0
+    la   $a0, n                # Load address of n
+    lw   $t0, 0($a0)           # Load grid size into $t0
+    move $s7, $t0              # Store n in $s7 for later use
+    li   $t0, 0                # Row counter initialized to 0
 
-swipe_up_column_up:
-    mul  $t1, $t0, 4
-    add  $t2, $s4, $t1
+swipe_up_column:
+    # Calculate base address of the current row
+    mul  $t9, $s7, 4           # Bytes per row = n * 4
+    mul  $t1, $t0, $t9         # Row index * Bytes per row
+    add  $t2, $s4, $t1         # Base address of the current row
 
-    lw   $t3, 0($t2)
-    lw   $t4, 12($t2)
-    lw   $t5, 24($t2)
+# 0   4  8 12 16 20
+# 24 28 32 36 40 44
+    lw   $t3, 0($t2)           # topmost value
+    lw   $t4, 24($t2)
+    lw   $t5, 48($t2)
+    lw   $t6, 72($t2)
+    lw   $t7, 96($t2)
+    lw   $t8, 120($t2)          # bottom most value
 
-    li   $a0, 0
-    li   $a1, 0
-    li   $a2, 0
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
 
-    bne  $t3, $zero, shift_t3_up
-    j    check_t4_up
 
-shift_t3_up:
-    move $a0, $t3
-    j    check_t4_up
+    jal merge_up_column
 
-check_t4_up:
-    bne  $t4, $zero, shift_t4_up
-    j    check_t5_up
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
+    jal shift_up_column
 
-shift_t4_up:
-    beq  $a0, $zero, store_t4_top_up
-    move $a1, $t4
-    j    check_t5_up
-
-store_t4_top_up:
-    move $a0, $t4
-    j    check_t5_up
-
-check_t5_up:
-    bne  $t5, $zero, shift_t5_up
-    j    merge_values_up
-
-shift_t5_up:
-    beq  $a0, $zero, store_t5_top_up
-    beq  $a1, $zero, store_t5_middle_up
-    move $a2, $t5
-    j    merge_values_up
-
-store_t5_top_up:
-    move $a0, $t5
-    j    merge_values_up
-
-store_t5_middle_up:
-    move $a1, $t5
-    j    merge_values_up
-
-merge_values_up:
-    beq  $a0, $a1, merge_a0_a1_up
-    j    check_a1_a2_up
-
-merge_a0_a1_up:
-    add  $a0, $a0, $a1
-    li   $a1, 0
-    bne  $a2, $zero, shift_a2_to_a1_up
-    j    store_back_up
-
-shift_a2_to_a1_up:
-    move $a1, $a2
-    li   $a2, 0
-    j    store_back_up
-
-check_a1_a2_up:
-    beq  $a1, $a2, merge_a1_a2_up
-    j    store_back_up
-
-merge_a1_a2_up:
-    add  $a1, $a1, $a2
-    li   $a2, 0
 
 store_back_up:
-    sw   $a0, 0($t2)
-    sw   $a1, 12($t2)
-    sw   $a2, 24($t2)
+    sw   $t3, 0($t2)           # topmost value
+    sw   $t4, 24($t2)
+    sw   $t5, 48($t2)
+    sw   $t6, 72($t2)
+    sw   $t7, 96($t2)
+    sw   $t8, 120($t2)         # bottom most value
 
     addi $t0, $t0, 1
-    li   $t6, 3
-    bne  $t0, $t6, swipe_up_column_up
+    bne  $t0, 6, swipe_up_column # Process next row if not done
 
     jal compare_grids
     jal moves_counter
@@ -691,8 +741,65 @@ store_back_up:
     jal  print_grid
     
     j play_game
+    
+shift_up_column:
+    # Shift 1st to 2nd
+    bne $t3, $zero, up_shift_2nd_to_3rd  # If $t3 is not zero, skip
+    move $t3, $t4                     # Move $t4 to $t3
+    li   $t4, 0                       # Set $t4 to zero
+
+up_shift_2nd_to_3rd:
+    bne $t4, $zero, up_shift_3rd_to_4th  # If $t4 is not zero, skip
+    move $t4, $t5                     # Move $t5 to $t4
+    li   $t5, 0                       # Set $t5 to zero
+
+up_shift_3rd_to_4th:
+    bne $t5, $zero, up_shift_4th_to_5th  # If $t5 is not zero, skip
+    move $t5, $t6                     # Move $t6 to $t5
+    li   $t6, 0                       # Set $t6 to zero
+
+up_shift_4th_to_5th:
+    bne $t6, $zero, up_shift_5th_to_6th  # If $t6 is not zero, skip
+    move $t6, $t7                     # Move $t7 to $t6
+    li   $t7, 0                       # Set $t7 to zero
+
+up_shift_5th_to_6th:
+    bne $t7, $zero, end_up_shift      # If $t7 is not zero, skip
+    move $t7, $t8                     # Move $t8 to $t7
+    li   $t8, 0                       # Set $t8 to zero
+
+end_up_shift:
+    jr $ra          # Return when done
 
 
+merge_up_column:
+    # Merge 1st and 2nd
+    bne $t3, $t4, up_merge_2nd_and_3rd  # If $t3 != $t4, skip
+    add $t3, $t3, $t4                # Add $t4 to $t3
+    li  $t4, 0                       # Set $t4 to zero
+
+up_merge_2nd_and_3rd:
+    bne $t4, $t5, up_merge_3rd_and_4th  # If $t4 != $t5, skip
+    add $t4, $t4, $t5                # Add $t5 to $t4
+    li  $t5, 0                       # Set $t5 to zero
+
+up_merge_3rd_and_4th:
+    bne $t5, $t6, up_merge_4th_and_5th  # If $t5 != $t6, skip
+    add $t5, $t5, $t6                # Add $t6 to $t5
+    li  $t6, 0                       # Set $t6 to zero
+
+up_merge_4th_and_5th:
+    bne $t6, $t7, up_merge_5th_and_6th  # If $t6 != $t7, skip
+    add $t6, $t6, $t7                # Add $t7 to $t6
+    li  $t7, 0                       # Set $t7 to zero
+
+up_merge_5th_and_6th:
+    bne $t7, $t8, end_up_merge      # If $t7 != $t8, skip
+    add $t7, $t7, $t8                # Add $t8 to $t7
+    li  $t8, 0                       # Set $t8 to zero
+
+end_up_merge:
+    jr $ra          # Return when done
 
 
 #============== SWIPE DOWN
