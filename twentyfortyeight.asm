@@ -74,6 +74,34 @@
     li $t9, 0
 .end_macro
 
+
+.macro cell_num(%dst_reg, %row_num, %col_num)
+    	subi %dst_reg, %row_num, 1      		# dst = row num value - 1
+    	mult %dst_reg, $t0           			# dst = (row num - 1) * n
+    	mflo %dst_reg            			# Saves the lower-order bits of the product of $destination = row number - 1 and $t0 = n into $destination 
+    	addu %dst_reg, %dst_reg, %col_num 		# $destination = ((row number - 1) * n + column number)
+.end_macro
+		
+.macro pick(%cell_num)
+	li   $t6, 4			# Loads 4, equal to how many bytes a word has in MIPS, into $t6 to start initializing the offset added to the value of matrix
+	mult $t6, %cell_num		# $t6 = 4 * number of the cell to write to
+	mflo $t6			# Saves the lower-order bits of product of $t6 = 4 and %cell_number = number of the cell to write to into $t6
+	la   $t7, matrix		# Loads the address where matrix is stored in the data segment into $t7
+	lw   $t7, 0($t7)		# Loads the *value* of matrix into $t7
+	addu $t7, $t7, $t6		# Adds the offset to the value of matrix to get the address of the cell to write to
+    	lw   $t8, 0($t7)		
+.end_macro
+
+.macro place(%cell_num, %val)
+	li	$t6, 4			# Loads 4, equal to how many bytes a word has in MIPS, into $t6 to start initializing the offset added to the value of matrix
+	mult	$t6, %cell_num	# $t6 = 4 * number of the cell to write to
+	mflo	$t6			# Saves the lower-order bits of product of $t6 = 4 and %cell_number = number of the cell to write to into $t6
+	la 	$t7, matrix		# Loads the address where matrix is stored in the data segment into $t7
+	lw 	$t7, 0($t7)		# Loads the *value* of matrix into $t7
+	addu	$t7, $t7, $t6		# Adds the offset to the value of matrix to get the address of the cell to write to
+	sw	%val, 0($t7)		# Stores %value to the cell to write to
+.end_macro
+
 .data
 menu_msg:              .asciiz "Choose [1] or [2]: \n[1] New Game \n[2] Start from a State \n"
 start_from_state_msg:  .asciiz "Enter a board configuration:\n"
@@ -125,6 +153,7 @@ get_game_choice:
     jr $ra
 
 new_game:
+    li $s0, 0
     jal random_two_index     # Get two random indices in $s1, $s2
     jal store_random_value
     j play_game
@@ -242,6 +271,7 @@ generate_two_index_end:
 # s2 = second random index
 
 start_from_state:
+    li $s0, 0
     print_string(start_from_state_msg)
     li   $t0, 0              # cell counter (initialize to 0)
     move $t1, $s4            # base address of grid 
@@ -382,6 +412,9 @@ play_game:
     li   $t0, 83 # 83 ASCII = S
     beq  $t1, $t0, swipe_down
 
+    li   $t0, 122 # 122 ASCII = z
+    beq  $t1, $t0, undo_move
+
     print_string(invalid_input) 
     j    play_game 
 
@@ -425,98 +458,109 @@ enable_random_generator:
 
 #============ SWIPE RIGHT
 swipe_right:
-    li   $t0, 0
+    
+right: 
+	subu $sp, $sp, 4		# Allocates space in the stack
+	sw   $ra, 0($sp)		# Stores the return address of right into memory
+	jal  right_shift				# Compresses the matrix rightward
+	jal  right_merge				# Merges cells with the same value rightward
+	jal  right_shift				# Compresses the matrix rightward again to account for merges
 
-swipe_right_row:
-    mul  $t9, $s3, 4
-    mul  $t1, $t0, $t9
-    add  $t2, $s4, $t1
+right_end:
+	flush_reg
+	lw   $ra, 0($sp)		# Loads the return address of right from memory into $ra
+	addu $sp, $sp, 4		# Deallocates stack space
+    	jr   $ra					# Return
 
-    lw   $t3, 0($t2)
-    lw   $t4, 4($t2)
-    lw   $t5, 8($t2)
+#
 
-    beq  $t4, $zero, check_rightmost
-    j    shift_and_merge
+right_shift: 
+	subu $sp, $sp, 4		# Allocates space in the stack
+	sw   $ra, 0($sp)		# Stores the return address of right_shift into memory
+	la   $t0, n              	# Loads the address where n is stored in the data segment into $t0
+	lw   $t0, 0($t0)         	# Loads the *value* of n into $t0
 
-check_rightmost:
-    beq  $t5, $zero, move_leftmost_to_rightmost
-    j    shift_and_merge
+right_srow:
+	li   $t1, 1              	# Initializes the row number into $t1 (1-indexed)
 
-move_leftmost_to_rightmost:
-    move $t5, $t3
-    li   $t3, 0
-    li   $t4, 0
+right_srow_check:  
+	bgt  $t1, $t0, right_shift_end 	# Exits the loop if all rows are processed
 
-shift_and_merge:
-    li   $a0, 0
-    li   $a1, 0
-    li   $a2, 0
+right_scol: 
+	move $t2, $t0              	# Initializes the column number into $t2. (1-indexed) Right to left traversals entail instantiating at n
+	move $t2, $t0		# Initializes the adjusted nonzero column index into $t3. (1-indexed) Right to left traversals entail instantiating at n
 
-    bne  $t5, $zero, store_t5
-    j    check_t4
+right_scol_check:
+	blt  $t2, 1, right_zero_fill	# Fills needed cells in the row with zeroes if all columns are processed
+	cell_num($t4, $t1, $t2)		# Gets the number of the cell to read and stores it at $t4
+	pick($t4)				# Gets the value of the cell to read and stores it at $t8
+	beqz $t8, right_next_scol	# No store occurs if the read cell is empty. The next column is processed
+	cell_num($t5, $t1, $t3)		# Gets the number of the cell to write to and stores it at $t5
+	place($t5, $t8)			# Stores the value of the read cell to the adjusted column index
+	subi $t3, $t3, 1		# Decrements the value of the nonzero column number by 1
 
-store_t5:
-    move $a2, $t5
-    j    check_t4
+right_next_scol:
+	subi $t2, $t2, 1		# Decrements the value of the column number by 1
+	j    right_scol_check				# Processes the next column
 
-check_t4:
-    bne  $t4, $zero, store_t4
-    j    check_t3
+right_zero_fill:
+	blt  $t3, 1, right_next_srow	# Processes the next row if all needed cells in the row are filled with zeroes
+	cell_num($t5, $t1, $t3)		# Gets the number of the cell to write to and stores it at $t5
+	place($t5, $0)			# Stores zero to the adjusted column index
+	subi $t3, $t3, 1       	# Decrements the value of the nonzero column number by 1
+	j    right_zero_fill    			# Continues filling zeroes
 
-store_t4:
-    beq  $a2, $zero, store_t4_in_a2
-    move $a1, $t4
-    j    check_t3
+right_next_srow:
+	addi $t1, $t1, 1		# Increments the value of the row number by 1
+	j    right_srow_check				# Processes the next row
 
-store_t4_in_a2:
-    move $a2, $t4
-    j    check_t3
+right_shift_end:
+	flush_reg
+	lw   $ra, 0($sp)        	# Loads the return address of right_shift from memory into $ra
+    	addu $sp, $sp, 4        	# Deallocates stack space
+    	jr   $ra                			# Return
 
-check_t3:
-    bne  $t3, $zero, store_t3
-    j    merge_values
+#
 
-store_t3:
-    beq  $a1, $zero, store_t3_in_a1
-    move $a0, $t3
-    j    merge_values
+right_merge: 
+	subu $sp, $sp, 4		# Allocates space in the stack
+	sw   $ra, 0($sp)		# Stores the return address of right_merge into memory
+	la   $t0, n              	# Loads the address where n is stored in the data segment into $t0
+	lw   $t0, 0($t0)         	# Loads the *value* of n into $t0
 
-store_t3_in_a1:
-    move $a1, $t3
-    j    merge_values
+right_mrow:
+	li   $t1, 1              	# Initializes the row number into $t1 (1-indexed)
 
-merge_values:
-    beq  $a2, $a1, merge_a2_a1
-    j    check_a1_a0
+right_mrow_check:
+	bgt  $t1, $t0, right_merge_end 	# Exits the loop if all rows are processed
 
-merge_a2_a1:
-    add  $a2, $a2, $a1
-    li   $a1, 0
-    bne  $a0, $zero, shift_a0_to_a1
-    j    check_a1_a0
+right_mcol:
+	move $t2, $t0              	# Initializes the column number into $t2. (1-indexed) Right to left traversals entail instantiating at n
 
-shift_a0_to_a1:
-    move $a1, $a0
-    li   $a0, 0
-    j    check_a1_a0
+right_mcol_check:
+	ble  $t2, 1, right_next_mrow 	# col_mright_for processes values by pair. The next row is processed if all needed cells in the row are merged or, alternatively, if there is no pair left to process in the row
+	cell_num($t3, $t1, $t2)		# Gets the number of the current cell in the row and stores it at $t3
+	pick($t3)				# Gets the value of the current cell in the row and stores it at $t8
+	move $t9, $t8          	# Saves the value of the current cell in the row in $t9 for comparison with the value of the previous cell
+	subi $t2, $t2, 1		# Decrements the value of the column number by 1
+	cell_num($t4, $t1, $t2)		# Gets the number of the previous cell in the row and stores it at $t4
+	pick($t4)				# Gets the value of the previous cell in the row and stores it at $t8
+	bne  $t9, $t8, right_mcol_check # No merge occurs if the cells are not equal. The next pair of columns are processed e.g. from columns n and (n - 1) to columns (n - 1) and (n - 2)
+	add  $t9, $t9, $t8		# Essentially doubles the value of $t9 and stores it back to the same register
+	place($t3, $t9)			# Stores the merged value to the current cell in the row
+	place($t4, $0)			# Stores zero to the previous cell in the row
+	subi $t2, $t2, 1       	# Decrements the value of the column number by 1 to process the next pair of columns e.g. from columns n and (n - 1) to columns (n - 2) and (n - 3). Note that this extra increment only occurs when a merge happens
+	j    right_mcol_check
 
-check_a1_a0:
-    beq  $a1, $a0, merge_a1_a0
-    j    store_back
+right_next_mrow:
+	addi $t1, $t1, 1		# Increments the value of the row number by 1
+	j    right_mrow_check				# Processes the next row
 
-merge_a1_a0:
-    add  $a1, $a1, $a0
-    li   $a0, 0
+right_merge_end:
+	lw   $ra, 0($sp)        	# Loads the return address of merge_rght from memory into $ra
+    	addu $sp, $sp, 4        	# Deallocates stack space
+    	                			# Return
 
-store_back:
-    sw   $a0, 0($t2)
-    sw   $a1, 4($t2)
-    sw   $a2, 8($t2)
-
-    addi $t0, $t0, 1
-    move $t6, $s3
-    bne  $t0, $t6, swipe_right_row
 
     jal  compare_grids
     beq  $s5, 4, random_tile_generator
@@ -829,8 +873,8 @@ check_game_status:
     li   $t0, 0                # Start index (0)
     li   $t1, 9                # Total number of cells (3x3 grid)
 
-# checking 512 working dont edit
-check_512_loop:
+# checking 2048 working dont edit
+check_2048_loop:
     # Exit loop if all cells are checked
     beq  $t0, $t1, game_over_check_done
 
@@ -847,7 +891,7 @@ check_512_loop:
 
 game_over_check_done:
     li   $t0, 0                # Start index (0)
-    li   $t1, 9                # Total number of cells (3x3 grid)
+    li   $t1, 36                # Total number of cells (6x6 grid)
     
 check_top_neighbor:
     li $t5, 0
@@ -920,7 +964,7 @@ has_right_neighbor:
 check_game_over_loop:
     # Increment index to check the next cell
     addi $t0, $t0, 1           # Increment index
-    beq  $t0, 36, check_game_over_done # If index >= 9, end game check
+    beq  $t0, 36, check_game_over_done # If index >= 36, end game check
     j check_game_over_loop      # Otherwise, check next cell
 
 check_game_over_done:
@@ -930,7 +974,8 @@ check_game_over_done:
 
 #======================== MOVES TRACKER
 moves_counter:
-
+    add $s0, $s0, 1
+    jr $ra
 #======================== Score Tracker for Memory
 
 
@@ -939,6 +984,7 @@ moves_counter:
 #======================== UNDO 
 # Main idea: pag input ng 'z' sabay print ko si back_up grid since delayed yun
 # tapos moves - 1 tapos score tracker for backup_grid
+undo_move:
 
 
 game_continues:
