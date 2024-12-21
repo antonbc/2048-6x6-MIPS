@@ -348,6 +348,10 @@ compare_loop:
 
 grid_not_equal_to_backup:
     li   $t8, 1               # Set $t8 to 1 meaning flag that there is a difference
+
+#======================== MOVES TRACKER
+moves_counter:
+    add $s0, $s0, 1
     jr   $ra                  
 
 compare_done:
@@ -488,7 +492,6 @@ right_store_back:
 
     # Finalize
     jal  compare_grids
-    jal  moves_counter
     beq  $s5, 4, random_tile_generator
     jal  print_grid
 
@@ -614,7 +617,6 @@ left_store_back:
 
     # Finalize
     jal  compare_grids
-    jal  moves_counter
     beq  $s5, 4, random_tile_generator
     jal  print_grid
 
@@ -687,6 +689,7 @@ end_left_merge:
 
 #=========== SWIPE UP
 swipe_up:
+    set_all_temp_registers_to_zero
     la   $a0, n                # Load address of n
     lw   $t0, 0($a0)           # Load grid size into $t0
     move $s7, $t0              # Store n in $s7 for later use
@@ -720,12 +723,6 @@ swipe_up_column:
     jal shift_up_column
 
     jal merge_up_column
-    jal merge_up_column
-    jal merge_up_column
-    jal merge_up_column
-    jal merge_up_column
-    jal merge_up_column
-    jal merge_up_column
 
     jal shift_up_column
     jal shift_up_column
@@ -748,7 +745,6 @@ up_store_back:
     bne  $t0, 6, swipe_up_column # Process next row if not done
 
     jal compare_grids
-    jal moves_counter
     beq $s5, 4, random_tile_generator
     jal  print_grid
     
@@ -816,6 +812,7 @@ end_up_merge:
 
 #============== SWIPE DOWN
 swipe_down:
+    set_all_temp_registers_to_zero
     la   $a0, n                # Load address of n
     lw   $t0, 0($a0)           # Load grid size into $t0
     move $s7, $t0              # Store n in $s7 for later use
@@ -842,12 +839,7 @@ swipe_down_column:
     jal shift_down_column
 
     jal merge_down_column
-    jal merge_down_column
-    jal merge_down_column
-    jal merge_down_column
-    jal merge_down_column
-    jal merge_down_column
-    jal merge_down_column
+
 
     jal shift_down_column
     jal shift_down_column
@@ -870,7 +862,6 @@ down_store_back:
     bge  $t0, 0, swipe_down_column # Process next row if not done
 
     jal compare_grids
-    jal moves_counter
     beq $s5, 4, random_tile_generator
     jal  print_grid
     
@@ -1045,10 +1036,7 @@ check_game_over_done:
     exit
 
 
-#======================== MOVES TRACKER
-moves_counter:
-    add $s0, $s0, 1
-    jr $ra
+
 
 #======================== UNDO 
 # Main idea: pag input ng 'z' sabay print ko si back_up grid since delayed yun
