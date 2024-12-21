@@ -461,6 +461,9 @@ enable_random_generator:
 
 #============ SWIPE RIGHT
 swipe_right:
+    la   $a0, n                # Load address of n
+    lw   $t0, 0($a0)           # Load grid size into $t0
+    move $s3, $t0              # Store n in $s3 for later use
     li   $t0, 0
 
 swipe_right_row:
@@ -468,87 +471,15 @@ swipe_right_row:
     mul  $t1, $t0, $t9
     add  $t2, $s4, $t1
 
-    lw   $t3, 0($t2)
+    lw   $t3, 0($t2) # leftmost value
     lw   $t4, 4($t2)
     lw   $t5, 8($t2)
+    lw   $t6, 12($t2)
+    lw   $t7, 16($t2)
+    lw   $t8, 20($t2) # rightmost value
 
-    beq  $t4, $zero, check_rightmost
-    j    shift_and_merge
-
-check_rightmost:
-    beq  $t5, $zero, move_leftmost_to_rightmost
-    j    shift_and_merge
-
-move_leftmost_to_rightmost:
-    move $t5, $t3
-    li   $t3, 0
-    li   $t4, 0
-
-shift_and_merge:
-    li   $a0, 0
-    li   $a1, 0
-    li   $a2, 0
-
-    bne  $t5, $zero, store_t5
-    j    check_t4
-
-store_t5:
-    move $a2, $t5
-    j    check_t4
-
-check_t4:
-    bne  $t4, $zero, store_t4
-    j    check_t3
-
-store_t4:
-    beq  $a2, $zero, store_t4_in_a2
-    move $a1, $t4
-    j    check_t3
-
-store_t4_in_a2:
-    move $a2, $t4
-    j    check_t3
-
-check_t3:
-    bne  $t3, $zero, store_t3
-    j    merge_values
-
-store_t3:
-    beq  $a1, $zero, store_t3_in_a1
-    move $a0, $t3
-    j    merge_values
-
-store_t3_in_a1:
-    move $a1, $t3
-    j    merge_values
-
-merge_values:
-    beq  $a2, $a1, merge_a2_a1
-    j    check_a1_a0
-
-merge_a2_a1:
-    add  $a2, $a2, $a1
-    li   $a1, 0
-    bne  $a0, $zero, shift_a0_to_a1
-    j    check_a1_a0
-
-shift_a0_to_a1:
-    move $a1, $a0
-    li   $a0, 0
-    j    check_a1_a0
-
-check_a1_a0:
-    beq  $a1, $a0, merge_a1_a0
-    j    store_back
-
-merge_a1_a0:
-    add  $a1, $a1, $a0
-    li   $a0, 0
-
-store_back:
-    sw   $a0, 0($t2)
-    sw   $a1, 4($t2)
-    sw   $a2, 8($t2)
+shift_right_row:
+    beq 
 
     addi $t0, $t0, 1
     move $t6, $s3
@@ -972,14 +903,12 @@ check_game_over_done:
 moves_counter:
     add $s0, $s0, 1
     jr $ra
-#======================== Score Tracker for Memory
-
-
-#======================== Score Tracker for Backup_grid
 
 #======================== UNDO 
 # Main idea: pag input ng 'z' sabay print ko si back_up grid since delayed yun
 # tapos moves - 1 tapos score tracker for backup_grid
+# imove ko nalang yung laman nung backup_grid then babalik ko to memory then print
+
 undo_move:
 
 
